@@ -92,6 +92,8 @@
 
 #include "arch/init.h"
 
+#include "runtime/java_lang_invoke_VMMethodHandles.h"
+#include "runtime/java_lang_invoke_VMMethodHandle.h"
 #include "runtime/java_lang_reflect_VMMethod.h"
 #include "runtime/java_lang_reflect_VMField.h"
 #include "runtime/java_lang_VMClassLoader.h"
@@ -485,6 +487,15 @@ static struct vm_native natives[] = {
 	DEFINE_NATIVE("java/lang/VMThread", "yield", java_lang_VMThread_yield),
 	DEFINE_NATIVE("java/lang/VMThrowable", "fillInStackTrace", native_vmthrowable_fill_in_stack_trace),
 	DEFINE_NATIVE("java/lang/VMThrowable", "getStackTrace", native_vmthrowable_get_stack_trace),
+	DEFINE_NATIVE("java/lang/invoke/VMMethodHandle", "invoke", java_lang_invoke_VMMethodHandle_invoke),
+	DEFINE_NATIVE("java/lang/invoke/VMMethodHandles", "findStatic", java_lang_invoke_VMMethodHandles_findStatic),
+	DEFINE_NATIVE("java/lang/invoke/VMMethodHandles", "findVirtual", java_lang_invoke_VMMethodHandles_findVirtual),
+	DEFINE_NATIVE("java/lang/invoke/VMMethodHandles", "findConstructor", java_lang_invoke_VMMethodHandles_findConstructor),
+	DEFINE_NATIVE("java/lang/invoke/VMMethodHandles", "findSpecial", java_lang_invoke_VMMethodHandles_findSpecial),
+	DEFINE_NATIVE("java/lang/invoke/VMMethodHandles", "findGetter", java_lang_invoke_VMMethodHandles_findGetter),
+	DEFINE_NATIVE("java/lang/invoke/VMMethodHandles", "findSetter", java_lang_invoke_VMMethodHandles_findSetter),
+	DEFINE_NATIVE("java/lang/invoke/VMMethodHandles", "findStaticGetter", java_lang_invoke_VMMethodHandles_findStaticGetter),
+	DEFINE_NATIVE("java/lang/invoke/VMMethodHandles", "findStaticSetter", java_lang_invoke_VMMethodHandles_findStaticSetter),
 	DEFINE_NATIVE("java/lang/reflect/Constructor", "constructNative", native_constructor_construct_native),
 	DEFINE_NATIVE("java/lang/reflect/Constructor", "getModifiersInternal", native_constructor_get_modifiers_internal),
 	DEFINE_NATIVE("java/lang/reflect/Constructor", "getParameterTypes", native_constructor_get_parameter_types),

@@ -271,6 +271,7 @@ struct vm_method *vm_java_lang_Number_longValue;
 struct vm_method *vm_java_lang_Number_doubleValue;
 struct vm_method *vm_java_lang_ref_Reference_clear;
 struct vm_method *vm_java_lang_ref_Reference_enqueue;
+struct vm_method *vm_java_lang_invoke_MethodHandle_init;
 struct vm_method *vm_java_nio_DirectByteBufferImpl_ReadWrite_init;
 struct vm_method *vm_sun_reflect_annotation_AnnotationInvocationHandler_create;
 
@@ -562,6 +563,12 @@ static const struct method_preload_entry method_preload_entries[] = {
 		"length",
 		"()I",
 		&vm_java_lang_String_length,
+	},
+	{
+		&vm_java_lang_invoke_MethodHandle,
+		"<init>",
+		"(Ljava/lang/invoke/VMMethodHandle;)V",
+		&vm_java_lang_invoke_MethodHandle_init,
 	},
 	{
 		&vm_java_nio_DirectByteBufferImpl_ReadWrite,

@@ -121,6 +121,7 @@ extern struct vm_method *vm_java_lang_Number_longValue;
 extern struct vm_method *vm_java_lang_Number_doubleValue;
 extern struct vm_method *vm_java_lang_ref_Reference_clear;
 extern struct vm_method *vm_java_lang_ref_Reference_enqueue;
+extern struct vm_method *vm_java_lang_invoke_MethodHandle_init;
 extern struct vm_method *vm_java_nio_DirectByteBufferImpl_ReadWrite_init;
 extern struct vm_method *vm_sun_reflect_annotation_AnnotationInvocationHandler_create;
 

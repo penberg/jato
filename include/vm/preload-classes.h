@@ -36,6 +36,8 @@ PRELOAD_CLASS("java/lang/InheritableThreadLocal", vm_java_lang_InheritableThread
 PRELOAD_CLASS("java/lang/IllegalMonitorStateException", vm_java_lang_IllegalMonitorStateException, 0)
 PRELOAD_CLASS("java/lang/System", vm_java_lang_System, 0)
 PRELOAD_CLASS("[Ljava/lang/annotation/Annotation;", vm_array_of_java_lang_annotation_Annotation, 0)
+PRELOAD_CLASS("java/lang/invoke/MethodHandle", vm_java_lang_invoke_MethodHandle, PRELOAD_OPTIONAL)	/* JDK7 - not in Classpath */
+PRELOAD_CLASS("java/lang/invoke/VMMethodHandle", vm_java_lang_invoke_VMMethodHandle, PRELOAD_OPTIONAL)	/* JDK7 - not in Classpath */
 PRELOAD_CLASS("java/lang/reflect/Field", vm_java_lang_reflect_Field, 0)
 PRELOAD_CLASS("java/lang/reflect/VMField", vm_java_lang_reflect_VMField, PRELOAD_OPTIONAL) /* Classpath 0.98 */
 PRELOAD_CLASS("java/lang/reflect/Constructor", vm_java_lang_reflect_Constructor, 0)

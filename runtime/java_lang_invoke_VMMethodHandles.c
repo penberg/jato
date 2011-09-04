@@ -9,11 +9,11 @@
 #include <stddef.h>
 #include <assert.h>
 
-jobject java_lang_invoke_VMMethodHandles_findStatic(jobject lookup, jobject refc, jobject name, jobject method_type)
+static struct vm_method *find_method(jobject refc, jobject name, jobject method_type)
 {
 	struct vm_class *vmc;
 	unsigned int i;
-        char *name_s;
+	char *name_s;
 
 	vmc = vm_object_to_vm_class(refc);
 	if (!vmc)
@@ -25,68 +25,66 @@ jobject java_lang_invoke_VMMethodHandles_findStatic(jobject lookup, jobject refc
 
 	for (i = 0; i < vmc->class->methods_count; i++) {
 		struct vm_method *vmm = &vmc->methods[i];
-		struct vm_object *mh, *vm_mh;
-
-		if (!vm_method_is_static(vmm))
-			continue;
 
 		if (strcmp(name_s, vmm->name))
 			continue;
 
-		mh = vm_object_alloc(vm_java_lang_invoke_MethodHandle);
-                if (!mh)
-                        return rethrow_exception();
+		/* TODO: check method_type */
 
-                vm_mh = vm_object_alloc(vm_java_lang_invoke_VMMethodHandle);
-                if (!vm_mh)
-                        return rethrow_exception();
-
-		vm_call_method(vm_java_lang_invoke_MethodHandle_init, mh, vm_mh);
-
-		return mh;
+		return vmm;
 	}
 
 	return NULL;
 }
 
-jobject java_lang_invoke_VMMethodHandles_findVirtual(jobject lookup, jobject refc, jobject name, jobject method_type)
+jobject java_lang_invoke_VMMethodHandles_findStatic(jobject lookup, jobject refc, jobject name, jobject method_type)
 {
-	struct vm_class *vmc;
-	unsigned int i;
-        char *name_s;
+	struct vm_object *mh, *vm_mh;
+	struct vm_method *vmm;
 
-	vmc = vm_object_to_vm_class(refc);
-	if (!vmc)
+	vmm = find_method(refc, name, method_type);
+	if (!vmm)
+		return NULL;
+
+	if (!vm_method_is_static(vmm))
+		return NULL;
+
+	mh = vm_object_alloc(vm_java_lang_invoke_MethodHandle);
+	if (!mh)
 		return rethrow_exception();
 
-	name_s = vm_string_to_cstr(name);
-        if (!name_s)
-                return throw_oom_error();
+	vm_mh = vm_object_alloc(vm_java_lang_invoke_VMMethodHandle);
+	if (!vm_mh)
+		return rethrow_exception();
 
-	for (i = 0; i < vmc->class->methods_count; i++) {
-		struct vm_method *vmm = &vmc->methods[i];
-		struct vm_object *mh, *vm_mh;
+	vm_call_method(vm_java_lang_invoke_MethodHandle_init, mh, vm_mh);
 
-		if (!method_is_virtual(vmm))
-			continue;
+	return mh;
+}
 
-		if (strcmp(name_s, vmm->name))
-			continue;
+jobject java_lang_invoke_VMMethodHandles_findVirtual(jobject lookup, jobject refc, jobject name, jobject method_type)
+{
+	struct vm_object *mh, *vm_mh;
+	struct vm_method *vmm;
 
-		mh = vm_object_alloc(vm_java_lang_invoke_MethodHandle);
-                if (!mh)
-                        return rethrow_exception();
+	vmm = find_method(refc, name, method_type);
+	if (!vmm)
+		return NULL;
 
-                vm_mh = vm_object_alloc(vm_java_lang_invoke_VMMethodHandle);
-                if (!vm_mh)
-                        return rethrow_exception();
+	if (!method_is_virtual(vmm))
+		return NULL;
 
-		vm_call_method(vm_java_lang_invoke_MethodHandle_init, mh, vm_mh);
+	mh = vm_object_alloc(vm_java_lang_invoke_MethodHandle);
+	if (!mh)
+		return rethrow_exception();
 
-		return mh;
-	}
+	vm_mh = vm_object_alloc(vm_java_lang_invoke_VMMethodHandle);
+	if (!vm_mh)
+		return rethrow_exception();
 
-	return NULL;
+	vm_call_method(vm_java_lang_invoke_MethodHandle_init, mh, vm_mh);
+
+	return mh;
 }
 
 jobject java_lang_invoke_VMMethodHandles_findConstructor(jobject lookup, jobject refc, jobject method_type)

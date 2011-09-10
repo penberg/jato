@@ -40,7 +40,7 @@
 #include "vm/die.h"
 
 static int marshall_call_arguments(struct vm_method *vmm, unsigned long *args,
-				   struct vm_object *args_array);
+				   struct vm_object *args_array, int args_idx);
 
 struct vm_class *vm_object_to_vm_class(struct vm_object *object)
 {
@@ -430,7 +430,7 @@ native_constructor_construct_native(struct vm_object *this,
 	unsigned long args[vmm->args_count];
 
 	args[0] = (unsigned long) result;
-	if (marshall_call_arguments(vmm, args + 1, args_array))
+	if (marshall_call_arguments(vmm, args + 1, args_array, 0))
 		return NULL;
 
 	vm_call_method_a(vmm, args, NULL);
@@ -601,13 +601,13 @@ struct vm_object *jvalue_to_object(union jvalue *value, enum vm_type vm_type)
 }
 
 static int marshall_call_arguments(struct vm_method *vmm, unsigned long *args,
-				   struct vm_object *args_array)
+				   struct vm_object *args_array, int args_idx)
 {
 	struct vm_method_arg *arg;
 	int args_array_idx;
 	int idx;
 
-	args_array_idx = 0;
+	args_array_idx = args_idx;
 	idx = 0;
 
 	if (args_array == NULL)
@@ -626,28 +626,25 @@ static int marshall_call_arguments(struct vm_method *vmm, unsigned long *args,
 	return 0;
 }
 
-static struct vm_object *
-call_virtual_method(struct vm_method *vmm, struct vm_object *o,
-		    struct vm_object *args_array)
+struct vm_object *call_virtual_method(struct vm_method *vmm, struct vm_object *o, struct vm_object *args_array, int args_idx)
 {
 	unsigned long args[vmm->args_count];
 	union jvalue result;
 
 	args[0] = (unsigned long) o;
-	if (marshall_call_arguments(vmm, args + 1, args_array))
+	if (marshall_call_arguments(vmm, args + 1, args_array, args_idx))
 		return NULL;
 
 	vm_call_method_this_a(vmm, o, args, &result);
 	return jvalue_to_object(&result, vmm->return_type.vm_type);
 }
 
-static struct vm_object *
-call_static_method(struct vm_method *vmm, struct vm_object *args_array)
+struct vm_object *call_static_method(struct vm_method *vmm, struct vm_object *args_array)
 {
 	unsigned long args[vmm->args_count];
 	union jvalue result;
 
-	if (marshall_call_arguments(vmm, args, args_array))
+	if (marshall_call_arguments(vmm, args, args_array, 0))
 		return NULL;
 
 	vm_call_method_a(vmm, args, &result);
@@ -695,7 +692,7 @@ native_method_invokenative(struct vm_object *method, struct vm_object *o,
 	if (!vm_object_is_instance_of(o, vmc))
 		goto throw_illegal;
 
-	return call_virtual_method(vmm, o, args);
+	return call_virtual_method(vmm, o, args, 0);
 
  throw_illegal:
 	signal_new_exception(vm_java_lang_IllegalArgumentException, NULL);

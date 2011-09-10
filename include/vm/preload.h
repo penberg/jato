@@ -48,6 +48,7 @@ extern struct vm_field *vm_java_lang_Thread_contextClassLoaderIsSystemClassLoade
 extern struct vm_field *vm_java_lang_Thread_vmThread;
 extern struct vm_field *vm_java_lang_VMThread_thread;
 extern struct vm_field *vm_java_lang_VMThread_vmdata;
+extern struct vm_field *vm_java_lang_invoke_VMMethodHandle_ptr;
 extern struct vm_field *vm_java_lang_reflect_Constructor_clazz;
 extern struct vm_field *vm_java_lang_reflect_Constructor_cons;
 extern struct vm_field *vm_java_lang_reflect_Constructor_slot;

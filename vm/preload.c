@@ -122,6 +122,7 @@ struct vm_field *vm_java_lang_Thread_contextClassLoaderIsSystemClassLoader;
 struct vm_field *vm_java_lang_Thread_vmThread;
 struct vm_field *vm_java_lang_VMThread_thread;
 struct vm_field *vm_java_lang_VMThread_vmdata;
+struct vm_field *vm_java_lang_invoke_VMMethodHandle_ptr;
 struct vm_field *vm_java_lang_reflect_Constructor_clazz;
 struct vm_field *vm_java_lang_reflect_Constructor_cons;
 struct vm_field *vm_java_lang_reflect_Constructor_slot;
@@ -163,6 +164,11 @@ static const struct field_preload_entry field_preload_entries[] = {
 	{ &vm_java_lang_Thread, "vmThread", "Ljava/lang/VMThread;", &vm_java_lang_Thread_vmThread },
 	{ &vm_java_lang_VMThread, "thread", "Ljava/lang/Thread;", &vm_java_lang_VMThread_thread },
 	{ &vm_java_lang_VMThread, "vmdata", "Ljava/lang/Object;", &vm_java_lang_VMThread_vmdata },
+
+	/*
+	 * java/lang/invoke
+	 */
+	{ &vm_java_lang_invoke_VMMethodHandle, "ptr", "Lgnu/classpath/Pointer;", &vm_java_lang_invoke_VMMethodHandle_ptr },
 
 	/*
 	 * java.lang.reflect.Constructor

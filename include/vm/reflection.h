@@ -38,4 +38,7 @@ struct vm_object *native_method_get_exception_types(struct vm_object *method);
 struct vm_object *native_method_get_default_value(struct vm_object *method);
 jobject native_vmarray_createobjectarray(jobject type, int dim);
 
+struct vm_object *call_static_method(struct vm_method *vmm, struct vm_object *args_array);
+struct vm_object *call_virtual_method(struct vm_method *vmm, struct vm_object *o, struct vm_object *args_array, int args_idx);
+
 #endif /* __JATO_VM_REFLECTION_H */

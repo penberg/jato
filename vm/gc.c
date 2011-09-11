@@ -130,6 +130,8 @@ static bool do_exit_safepoint(void)
 	if (pthread_spin_lock(&gc_spinlock) != 0)
 		die("pthread_spin_lock");
 
+	assert(nr_in_safepoint > 0);
+
 	if (--nr_in_safepoint == 0)
 		ret = true;
 
@@ -153,6 +155,8 @@ static void enter_safepoint(void)
 
 	if (pthread_spin_lock(&gc_spinlock) != 0)
 		die("pthread_spin_lock");
+
+	assert(nr_in_safepoint < nr_threads);
 
 	if (++nr_in_safepoint == nr_threads)
 		resume_thread(gc_thread_id);
@@ -369,7 +373,10 @@ static void *gc_thread(void *arg)
 	 * by default to avoid races with sigwait().
 	 */
 	sigemptyset(&sigset);
-	sigaddset(&sigset, SIGUSR2);
+
+	if(sigaddset(&sigset, SIGUSR2) != 0)
+		die("sigaddset");
+
 	pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 
 	for (;;) {
@@ -418,6 +425,9 @@ static void *do_gc_alloc(size_t size)
 
 	p	= malloc(size);
 
+	if (p)
+		memset(p, 0, size);
+
 	return p;
 }
 
@@ -444,11 +454,35 @@ static void do_vm_free(void *p)
 	free(p);
 }
 
-static int do_gc_register_finalizer(struct vm_object *object,
-				    finalizer_fn finalizer)
+static int do_gc_register_finalizer(struct vm_object *object, finalizer_fn finalizer)
 {
-	NOT_IMPLEMENTED;
 	return 0;
+}
+
+static void do_gc_setup_signals(void)
+{
+	struct sigaction sa;
+	sigset_t sigset;
+
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags     = SA_RESTART | SA_SIGINFO;
+
+	sa.sa_sigaction = suspend_handler;
+	sigaction(SIGUSR1, &sa, NULL);
+
+	sa.sa_sigaction = wakeup_handler;
+	sigaction(SIGUSR2, &sa, NULL);
+
+	/*
+	 * SIGUSR2 is used to resume threads. Make sure the signal is blocked
+	 * by default to avoid races with sigwait().
+	 */
+	sigemptyset(&sigset);
+
+	if (sigaddset(&sigset, SIGUSR2) != 0)
+		die("sigaddset");
+
+	pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 }
 
 static void gc_setup(void)
@@ -457,7 +491,8 @@ static void gc_setup(void)
 		.gc_alloc		= do_gc_alloc,
 		.vm_alloc		= do_vm_alloc,
 		.vm_free		= do_vm_free,
-		.gc_register_finalizer	= do_gc_register_finalizer
+		.gc_register_finalizer	= do_gc_register_finalizer,
+		.gc_setup_signals	= do_gc_setup_signals,
 	};
 
 	if (pthread_spin_init(&gc_spinlock, PTHREAD_PROCESS_SHARED) != 0)

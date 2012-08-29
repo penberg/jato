@@ -37,6 +37,8 @@ struct vm_interp_frame {
 	unsigned long			pc;
 
 	struct stack			*ostack;
+
+	struct vm_method		*vmm;
 };
 
 enum interp_status {
@@ -65,6 +67,7 @@ static inline uint16_t read_u16(unsigned char *code, unsigned long *pc)
 
 static enum interp_status interpret(struct vm_interp_frame *frame, unsigned char *code, unsigned long *pc)
 {
+	struct vm_method *vmm = frame->vmm;
 	unsigned char opc;
 
 	opc = read_u8(code, pc);
@@ -252,7 +255,24 @@ static enum interp_status interpret(struct vm_interp_frame *frame, unsigned char
 	case OPC_RETURN: {
 		return INTERP_RETURN;
 	}
-	case OPC_GETSTATIC:		assert(!"OPC_GETSTATIC"); break;
+	case OPC_GETSTATIC: {
+		struct vm_class *vmc = vmm->class;
+		struct vm_field *vmf;
+		uint16_t idx;
+		void *value;
+
+		idx = read_u16(code, pc);
+
+		vmf = vm_class_resolve_field_recursive(vmc, idx);
+
+		assert(vmf != NULL);
+
+		value = vmf->class->static_values + vmf->offset;
+
+		stack_push(frame->ostack, value);
+
+		break;
+	}
 	case OPC_PUTSTATIC:		assert(!"OPC_PUTSTATIC"); break;
 	case OPC_GETFIELD:		assert(!"OPC_GETFIELD"); break;
 	case OPC_PUTFIELD:		assert(!"OPC_PUTFIELD"); break;
@@ -296,6 +316,8 @@ void vm_interp_method_v(struct vm_method *vmm, va_list args, union jvalue *resul
 	frame.ostack = alloc_stack();
 
 	assert(frame.ostack != NULL);
+
+	frame.vmm = vmm;
 
 	assert(!vm_class_is_interface(vmm->class));
 

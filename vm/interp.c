@@ -28,12 +28,15 @@
 
 #include "cafebabe/code_attribute.h"
 #include "vm/method.h"
+#include "vm/class.h"
 
 #include <assert.h>
 #include <stdio.h>
 
 struct vm_interp_frame {
 	uint16_t			pc;
+
+	struct stack			*ostack;
 };
 
 enum interp_status {
@@ -258,18 +261,32 @@ static enum interp_status interp(uint8_t opc)
 	return INTERP_CONTINUE;
 }
 
-void vm_interp_method_v(struct vm_method *method, va_list args, union jvalue *result)
+void vm_interp_method_v(struct vm_method *vmm, va_list args, union jvalue *result)
 {
 	struct vm_interp_frame frame;
 
 	frame.pc = 0;
 
-	while (frame.pc < method->code_attribute.code_length) {
-		uint8_t opc = method->code_attribute.code[frame.pc];
+	frame.ostack = alloc_stack();
+
+	assert(frame.ostack != NULL);
+
+	assert(!vm_class_is_interface(vmm->class));
+
+	for (int i = 0; i < vmm->args_count; i++) {
+		void *arg = va_arg(args, void *);
+
+		stack_push(frame.ostack, arg);
+	}
+
+	while (frame.pc < vmm->code_attribute.code_length) {
+		uint8_t opc = vmm->code_attribute.code[frame.pc];
 
 		if (interp(opc) == INTERP_RETURN)
 			return;
 
 		frame.pc++;
 	}
+
+	free_stack(frame.ostack);
 }

@@ -32,6 +32,10 @@
 #include <assert.h>
 #include <stdio.h>
 
+struct vm_interp_frame {
+	uint16_t			pc;
+};
+
 enum interp_status {
 	INTERP_CONTINUE,
 	INTERP_RETURN,
@@ -256,16 +260,16 @@ static enum interp_status interp(uint8_t opc)
 
 void vm_interp_method_v(struct vm_method *method, va_list args, union jvalue *result)
 {
-	uint32_t pc;
+	struct vm_interp_frame frame;
 
-	pc = 0;
+	frame.pc = 0;
 
-	while (pc < method->code_attribute.code_length) {
-		uint8_t opc = method->code_attribute.code[pc];
+	while (frame.pc < method->code_attribute.code_length) {
+		uint8_t opc = method->code_attribute.code[frame.pc];
 
 		if (interp(opc) == INTERP_RETURN)
 			return;
 
-		pc++;
+		frame.pc++;
 	}
 }

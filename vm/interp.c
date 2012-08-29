@@ -34,7 +34,7 @@
 #include <stdio.h>
 
 struct vm_interp_frame {
-	uint16_t			pc;
+	unsigned long			pc;
 
 	struct stack			*ostack;
 };
@@ -44,8 +44,31 @@ enum interp_status {
 	INTERP_RETURN,
 };
 
-static enum interp_status interp(uint8_t opc)
+static inline uint8_t read_u8(unsigned char *code, unsigned long *pc)
 {
+	uint8_t c = code[*pc];
+
+	*pc = *pc + 1;
+
+	return c;
+}
+
+static inline uint16_t read_u16(unsigned char *code, unsigned long *pc)
+{
+	uint16_t c;
+
+	c  = read_u8(code, pc) << 8;
+	c |= read_u8(code, pc);
+
+	return c;
+}
+
+static enum interp_status interpret(struct vm_interp_frame *frame, unsigned char *code, unsigned long *pc)
+{
+	unsigned char opc;
+
+	opc = read_u8(code, pc);
+
 	switch (opc) {
 	case OPC_NOP: {
 		 break;
@@ -264,6 +287,9 @@ static enum interp_status interp(uint8_t opc)
 void vm_interp_method_v(struct vm_method *vmm, va_list args, union jvalue *result)
 {
 	struct vm_interp_frame frame;
+	unsigned char *code;
+	
+	code = vmm->code_attribute.code;
 
 	frame.pc = 0;
 
@@ -280,12 +306,8 @@ void vm_interp_method_v(struct vm_method *vmm, va_list args, union jvalue *resul
 	}
 
 	while (frame.pc < vmm->code_attribute.code_length) {
-		uint8_t opc = vmm->code_attribute.code[frame.pc];
-
-		if (interp(opc) == INTERP_RETURN)
+		if (interpret(&frame, code, &frame.pc) == INTERP_RETURN)
 			return;
-
-		frame.pc++;
 	}
 
 	free_stack(frame.ostack);

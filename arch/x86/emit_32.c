@@ -1,7 +1,7 @@
 /*
- * x86-32/x86-64 code emitter.
+ * Intel x86 code generator
  *
- * Copyright (C) 2006-2009 Pekka Enberg
+ * Copyright (C) 2006-2009, 2013 Pekka Enberg
  * Copyright (C) 2008-2009 Arthur Huillet
  * Copyright (C) 2009 Eduard - Gabriel Munteanu
  *
@@ -27,6 +27,8 @@
  *
  * Please refer to the file LICENSE for details.
  */
+
+#include "inari/x86/codegen_32.h"
 
 #include "arch/instruction.h"
 #include "arch/stack-frame.h"
@@ -63,6 +65,11 @@
 #include <string.h>
 #include <errno.h>
 #include <stdio.h>
+
+static void x86_code_commit(struct buffer *buf, char *code)
+{
+	buf->offset += (void *) code - buffer_current(buf);
+}
 
 /*
  * Common code emitters
@@ -102,23 +109,6 @@ static inline void emit(struct buffer *buf, unsigned char c)
 	assert(!err);
 }
 
-static void write_imm32(struct buffer *buf, unsigned long offset, long imm32)
-{
-	unsigned char *buffer;
-	union {
-		int val;
-		unsigned char b[4];
-	} imm_buf;
-
-	buffer = buf->buf;
-	imm_buf.val = imm32;
-
-	buffer[offset] = imm_buf.b[0];
-	buffer[offset + 1] = imm_buf.b[1];
-	buffer[offset + 2] = imm_buf.b[2];
-	buffer[offset + 3] = imm_buf.b[3];
-}
-
 static void emit_imm32(struct buffer *buf, int imm)
 {
 	union {
@@ -147,21 +137,6 @@ static void __emit_call(struct buffer *buf, void *call_target)
 
 	emit(buf, 0xe8);
 	emit_imm32(buf, disp);
-}
-
-static void emit_call(struct insn *insn, struct buffer *buf, struct basic_block *bb)
-{
-	__emit_call(buf, (void *)insn->operand.rel);
-}
-
-static void emit_ret(struct buffer *buf)
-{
-	emit(buf, 0xc3);
-}
-
-static void emit_leave(struct buffer *b)
-{
-	emit(b, 0xc9);
 }
 
 static void __emit_push_reg(struct buffer *buf, enum machine_reg reg)
@@ -301,7 +276,7 @@ void backpatch_branch_target(struct buffer *buf,
 
 	relative_addr = branch_rel_addr(insn, target_offset);
 
-	write_imm32(buf, backpatch_offset, relative_addr);
+	inari_x86_emit32(buf->buf + backpatch_offset, relative_addr);
 }
 
 static void __emit_jmp(struct buffer *buf, unsigned long addr)
@@ -329,7 +304,7 @@ static void fixup_branch_target(uint8_t *target_p, void *target)
 static void emit_really_indirect_jump_reg(struct buffer *buf, enum machine_reg reg)
 {
 	emit(buf, 0xff);
-	emit(buf, x86_encode_mod_rm(0x0, 0x04, x86_encode_reg(reg)));
+	emit(buf, inari_x86_modrm(0x0, 0x04, x86_encode_reg(reg)));
 }
 
 static void emit_mov_reg_membase(struct insn *insn, struct buffer *buf, struct basic_block *bb);
@@ -344,7 +319,7 @@ __emit_reg_reg(struct buffer *buf, unsigned char opc,
 {
 	unsigned char mod_rm;
 
-	mod_rm = x86_encode_mod_rm(0x03, x86_encode_reg(direct_reg), x86_encode_reg(rm_reg));
+	mod_rm = inari_x86_modrm(0x03, x86_encode_reg(direct_reg), x86_encode_reg(rm_reg));
 
 	emit(buf, opc);
 	emit(buf, mod_rm);
@@ -375,7 +350,7 @@ __emit_memdisp(struct buffer *buf, unsigned char opc, unsigned long disp,
 {
 	unsigned char mod_rm;
 
-	mod_rm = x86_encode_mod_rm(0, reg_opcode, 5);
+	mod_rm = inari_x86_modrm(0, reg_opcode, 5);
 
 	emit(buf, opc);
 	emit(buf, mod_rm);
@@ -420,7 +395,7 @@ __emit_membase(struct buffer *buf, unsigned char opc,
 	else
 		mod = 0x02;
 
-	mod_rm = x86_encode_mod_rm(mod, reg_opcode, rm);
+	mod_rm = inari_x86_modrm(mod, reg_opcode, rm);
 	emit(buf, mod_rm);
 
 	if (needs_sib)
@@ -442,12 +417,6 @@ static void __emit_push_membase(struct buffer *buf, enum machine_reg src_reg,
 				unsigned long disp)
 {
 	__emit_membase(buf, 0xff, src_reg, disp, 6);
-}
-
-static void __emit_mov_reg_reg(struct buffer *buf, enum machine_reg src_reg,
-			       enum machine_reg dest_reg)
-{
-	__emit_reg_reg(buf, 0x89, src_reg, dest_reg);
 }
 
 static void emit_mov_memlocal_reg(struct insn *insn, struct buffer *buf, struct basic_block *bb)
@@ -498,7 +467,7 @@ static void emit_mov_reg_memdisp(struct insn *insn, struct buffer *buf, struct b
 static void emit_mov_memindex_reg(struct insn *insn, struct buffer *buf, struct basic_block *bb)
 {
 	emit(buf, 0x8b);
-	emit(buf, x86_encode_mod_rm(0x00, encode_reg(&insn->dest.reg), 0x04));
+	emit(buf, inari_x86_modrm(0x00, encode_reg(&insn->dest.reg), 0x04));
 	emit(buf, x86_encode_sib(insn->src.shift, encode_reg(&insn->src.index_reg), encode_reg(&insn->src.base_reg)));
 }
 
@@ -543,7 +512,7 @@ static void emit_mov_reg_memlocal(struct insn *insn, struct buffer *buf, struct 
 static void emit_mov_reg_memindex(struct insn *insn, struct buffer *buf, struct basic_block *bb)
 {
 	emit(buf, 0x89);
-	emit(buf, x86_encode_mod_rm(0x00, encode_reg(&insn->src.reg), 0x04));
+	emit(buf, inari_x86_modrm(0x00, encode_reg(&insn->src.reg), 0x04));
 	emit(buf, x86_encode_sib(insn->dest.shift, encode_reg(&insn->dest.index_reg), encode_reg(&insn->dest.base_reg)));
 }
 
@@ -558,14 +527,8 @@ static void emit_alu_imm_reg(struct buffer *buf, unsigned char opc_ext,
 		opc = 0x81;
 
 	emit(buf, opc);
-	emit(buf, x86_encode_mod_rm(0x3, opc_ext, x86_encode_reg(reg)));
+	emit(buf, inari_x86_modrm(0x3, opc_ext, x86_encode_reg(reg)));
 	emit_imm(buf, imm);
-}
-
-static void __emit_sub_imm_reg(struct buffer *buf, unsigned long imm,
-			       enum machine_reg reg)
-{
-	emit_alu_imm_reg(buf, 0x05, imm, reg);
 }
 
 static void __emit_cmp_imm_reg(struct buffer *buf, int rex_w, long imm, enum machine_reg reg)
@@ -594,43 +557,31 @@ static void emit_test_imm_memdisp(struct insn *insn, struct buffer *buf, struct 
 	__emit_test_imm_memdisp(buf, insn->src.imm, insn->dest.disp);
 }
 
-static void emit_save_callee_save_regs(struct buffer *buf)
-{
-	int i;
-
-	for (i = 0; i < NR_CALLEE_SAVE_REGS; i++) {
-		enum machine_reg reg = callee_save_regs[i];
-
-		__emit_push_reg(buf, reg);
-	}
-}
-
-static void emit_restore_callee_save_regs(struct buffer *buf)
-{
-	int i;
-
-	for (i = 0; i < NR_CALLEE_SAVE_REGS; i++) {
-		enum machine_reg reg = callee_save_regs[NR_CALLEE_SAVE_REGS - i - 1];
-
-		__emit_pop_reg(buf, reg);
-	}
-}
-
-#define STACK_FRAME_REDZONE_END		0xdeadbeef
+#define STACK_FRAME_REDZONE_END		0xdeadbeefUL
 
 void emit_prolog(struct buffer *buf, struct stack_frame *frame,
 					unsigned long frame_size)
 {
-	__emit_push_reg(buf, MACH_REG_EBP);
-	__emit_mov_reg_reg(buf, MACH_REG_ESP, MACH_REG_EBP);
+	char *code = buffer_current(buf);
+	int i;
+
+	inari_x86_push_reg(code, INARI_X86_EBP);
+
+	inari_x86_mov_reg_reg(code, INARI_X86_ESP, INARI_X86_EBP, 4);
 
 	if (frame_size)
-		__emit_sub_imm_reg(buf, frame_size, MACH_REG_ESP);
+		inari_x86_sub_imm_reg(code, frame_size, INARI_X86_ESP);
 
-	emit_save_callee_save_regs(buf);
+	for (i = 0; i < NR_CALLEE_SAVE_REGS; i++) {
+		enum machine_reg reg = callee_save_regs[i];
+
+		inari_x86_push_reg(code, x86_encode_reg(reg));
+	}
 
 	if (opt_debug_stack)
-		__emit_push_imm(buf, STACK_FRAME_REDZONE_END);
+		inari_x86_push_imm(code, STACK_FRAME_REDZONE_END);
+
+	x86_code_commit(buf, code);
 }
 
 /* call-site in edx, magic is in ecx */
@@ -643,48 +594,63 @@ stack_frame_redzone_fail(void *eax, void *edx, void *ecx)
 
 static void emit_stack_redzone_check(struct buffer *buf)
 {
-	__emit_mov_imm_reg(buf, (unsigned long) buffer_current(buf), MACH_REG_EDX);
-	__emit_pop_reg(buf, MACH_REG_ECX);
+	char *code = buffer_current(buf);
 
-	__emit_cmp_imm_reg(buf, 1, STACK_FRAME_REDZONE_END, MACH_REG_ECX);
+	inari_x86_mov_imm_reg(code, (unsigned long) code, INARI_X86_EDX);
 
-	/* open-coded "jne" */
-	emit(buf, 0x0f);
-	emit(buf, 0x85);
+	inari_x86_pop_reg(code, INARI_X86_ECX);
 
-	uint8_t *jne_addr = buffer_current(buf);
-	emit_imm32(buf, 0);
-	fixup_branch_target(jne_addr, stack_frame_redzone_fail);
-}
+	inari_x86_cmp_imm_reg(code, STACK_FRAME_REDZONE_END, INARI_X86_ECX);
 
-static void emit_restore_regs(struct buffer *buf)
-{
-	emit_restore_callee_save_regs(buf);
+	inari_x86_jne(code, stack_frame_redzone_fail);
+
+	x86_code_commit(buf, code);
 }
 
 void emit_epilog(struct buffer *buf)
 {
+	char *code;
+	int i;
+
 	if (opt_debug_stack)
 		emit_stack_redzone_check(buf);
 
-	emit_restore_regs(buf);
-	emit_leave(buf);
-	emit_ret(buf);
+	code = buffer_current(buf);
+
+	for (i = 0; i < NR_CALLEE_SAVE_REGS; i++) {
+		enum machine_reg reg = callee_save_regs[NR_CALLEE_SAVE_REGS - i - 1];
+
+		inari_x86_pop_reg(code, x86_encode_reg(reg));
+	}
+
+	inari_x86_leave(code);
+
+	inari_x86_ret(code);
+
+	x86_code_commit(buf, code);
 }
 
 void emit_unwind(struct buffer *buf)
 {
+	char *code;
+	int i;
+
 	if (opt_debug_stack)
 		emit_stack_redzone_check(buf);
 
-	emit_restore_regs(buf);
-	emit_leave(buf);
-	__emit_jmp(buf, (unsigned long)&unwind);
-}
+	code = buffer_current(buf);
 
-static void emit_push_imm(struct insn *insn, struct buffer *buf, struct basic_block *bb)
-{
-	__emit_push_imm(buf, insn->operand.imm);
+	for (i = 0; i < NR_CALLEE_SAVE_REGS; i++) {
+		enum machine_reg reg = callee_save_regs[NR_CALLEE_SAVE_REGS - i - 1];
+
+		inari_x86_pop_reg(code, x86_encode_reg(reg));
+	}
+
+	inari_x86_leave(code);
+
+	inari_x86_jmp(code, (unsigned long)&unwind);
+
+	x86_code_commit(buf, code);
 }
 
 static void emit_fld_membase(struct insn *insn, struct buffer *buf, struct basic_block *bb)
@@ -745,7 +711,7 @@ static void __emit_div_mul_membase_eax(struct buffer *buf,
 		mod = 0x02;
 
 	emit(buf, 0xf7);
-	emit(buf, x86_encode_mod_rm(mod, opc_ext, encode_reg(&src->base_reg)));
+	emit(buf, inari_x86_modrm(mod, opc_ext, encode_reg(&src->base_reg)));
 	emit_imm(buf, disp);
 }
 
@@ -757,7 +723,7 @@ static void __emit_div_mul_reg_eax(struct buffer *buf,
 	assert(mach_reg(&dest->reg) == MACH_REG_EAX);
 
 	emit(buf, 0xf7);
-	emit(buf, x86_encode_mod_rm(0x03, opc_ext, encode_reg(&src->base_reg)));
+	emit(buf, inari_x86_modrm(0x03, opc_ext, encode_reg(&src->base_reg)));
 }
 
 static void emit_mul_membase_eax(struct insn *insn, struct buffer *buf, struct basic_block *bb)
@@ -800,25 +766,24 @@ static void __emit_add_imm_reg(struct buffer *buf, long imm, enum machine_reg re
 static void emit_indirect_jump_reg(struct buffer *buf, enum machine_reg reg)
 {
 	emit(buf, 0xff);
-	emit(buf, x86_encode_mod_rm(0x3, 0x04, x86_encode_reg(reg)));
-}
-
-static void __emit_test_membase_reg(struct buffer *buf, enum machine_reg src,
-				    unsigned long disp, enum machine_reg dest)
-{
-	__emit_membase_reg(buf, 0x85, src, disp, dest);
+	emit(buf, inari_x86_modrm(0x3, 0x04, x86_encode_reg(reg)));
 }
 
 /* Emits exception test using given register. */
 static void emit_exception_test(struct buffer *buf, enum machine_reg reg)
 {
+	char *code;
+
 	/* mov gs:(0xXXX), %reg */
 	emit(buf, 0x65);
 	__emit_memdisp_reg(buf, 0x8b,
 		get_thread_local_offset(&exception_guard), reg);
 
-	/* test (%reg), %reg */
-	__emit_test_membase_reg(buf, reg, 0, reg);
+	code = buffer_current(buf);
+
+	inari_x86_test_membase_reg(code, x86_encode_reg(reg), 0, x86_encode_reg(reg));
+
+	x86_code_commit(buf, code);
 }
 
 static void emit_conv_xmm_to_xmm64(struct insn *insn, struct buffer *buf, struct basic_block *bb)
@@ -868,7 +833,7 @@ static void emit_mov_memindex_xmm(struct insn *insn, struct buffer *buf, struct 
 	emit(buf, 0xf3);
 	emit(buf, 0x0f);
 	emit(buf, 0x10);
-	emit(buf, x86_encode_mod_rm(0x00, encode_reg(&insn->dest.reg), 0x04));
+	emit(buf, inari_x86_modrm(0x00, encode_reg(&insn->dest.reg), 0x04));
 	emit(buf, x86_encode_sib(insn->src.shift, encode_reg(&insn->src.index_reg), encode_reg(&insn->src.base_reg)));
 }
 
@@ -877,7 +842,7 @@ static void emit_mov_64_memindex_xmm(struct insn *insn, struct buffer *buf, stru
 	emit(buf, 0xf2);
 	emit(buf, 0x0f);
 	emit(buf, 0x10);
-	emit(buf, x86_encode_mod_rm(0x00, encode_reg(&insn->dest.reg), 0x04));
+	emit(buf, inari_x86_modrm(0x00, encode_reg(&insn->dest.reg), 0x04));
 	emit(buf, x86_encode_sib(insn->src.shift, encode_reg(&insn->src.index_reg), encode_reg(&insn->src.base_reg)));
 }
 
@@ -886,7 +851,7 @@ static void emit_mov_xmm_memindex(struct insn *insn, struct buffer *buf, struct 
 	emit(buf, 0xf3);
 	emit(buf, 0x0f);
 	emit(buf, 0x11);
-	emit(buf, x86_encode_mod_rm(0x00, encode_reg(&insn->src.reg), 0x04));
+	emit(buf, inari_x86_modrm(0x00, encode_reg(&insn->src.reg), 0x04));
 	emit(buf, x86_encode_sib(insn->dest.shift, encode_reg(&insn->dest.index_reg), encode_reg(&insn->dest.base_reg)));
 }
 
@@ -895,15 +860,19 @@ static void emit_mov_64_xmm_memindex(struct insn *insn, struct buffer *buf, stru
 	emit(buf, 0xf2);
 	emit(buf, 0x0f);
 	emit(buf, 0x11);
-	emit(buf, x86_encode_mod_rm(0x00, encode_reg(&insn->src.reg), 0x04));
+	emit(buf, inari_x86_modrm(0x00, encode_reg(&insn->src.reg), 0x04));
 	emit(buf, x86_encode_sib(insn->dest.shift, encode_reg(&insn->dest.index_reg), encode_reg(&insn->dest.base_reg)));
 }
 
 void emit_trace_invoke(struct buffer *buf, struct compilation_unit *cu)
 {
-	__emit_push_imm(buf, (unsigned long) cu);
-	__emit_call(buf, &trace_invoke);
-	__emit_add_imm_reg(buf, PTR_SIZE, MACH_REG_xSP);
+	char *code = buffer_current(buf);
+
+	inari_x86_push_imm(code, (unsigned long) cu);
+	inari_x86_call(code, trace_invoke);
+	inari_x86_add_imm_reg(code, PTR_SIZE, INARI_X86_ESP);
+
+	x86_code_commit(buf, code);
 }
 
 void emit_trampoline(struct compilation_unit *cu,
@@ -911,19 +880,24 @@ void emit_trampoline(struct compilation_unit *cu,
 		     struct jit_trampoline *trampoline)
 {
 	struct buffer *buf = trampoline->objcode;
+	char *code;
 
 	jit_text_lock();
 
 	buf->buf = jit_text_ptr();
 
+	code = buffer_current(buf);
+
 	/* This is for __builtin_return_address() to work and to access
 	   call arguments in correct manner. */
-	__emit_push_reg(buf, MACH_REG_EBP);
-	__emit_mov_reg_reg(buf, MACH_REG_ESP, MACH_REG_EBP);
+	inari_x86_push_reg(code, INARI_X86_EBP);
+	inari_x86_mov_reg_reg(code, INARI_X86_ESP, INARI_X86_EBP, 4);
 
-	__emit_push_imm(buf, (unsigned long)cu);
-	__emit_call(buf, call_target);
-	__emit_add_imm_reg(buf, 0x04, MACH_REG_ESP);
+	inari_x86_push_imm(code, (unsigned long) cu);
+	inari_x86_call(code, call_target);
+	inari_x86_add_imm_reg(code, 0x04, INARI_X86_ESP);
+
+	x86_code_commit(buf, code);
 
 	/*
 	 * Test for exeption occurrence.
@@ -937,19 +911,26 @@ void emit_trampoline(struct compilation_unit *cu,
 	__emit_memdisp_reg(buf, 0x8b,
 			   get_thread_local_offset(&trampoline_exception_guard),
 			   MACH_REG_ECX);
-	__emit_test_membase_reg(buf, MACH_REG_ECX, 0, MACH_REG_ECX);
+
+	code = buffer_current(buf);
+
+	inari_x86_test_membase_reg(code, INARI_X86_ECX, 0, INARI_X86_ECX);
 
 	if (vm_method_is_virtual(cu->method)) {
-		__emit_push_reg(buf, MACH_REG_EAX);
-		__emit_push_membase(buf, MACH_REG_EBP, 0x08);
+		inari_x86_push_reg(code, INARI_X86_EAX);
 
-		__emit_push_imm(buf, (unsigned long)cu);
-		__emit_call(buf, fixup_vtable);
-		__emit_add_imm_reg(buf, 0x08, MACH_REG_ESP);
-		__emit_pop_reg(buf, MACH_REG_EAX);
+		inari_x86_push_membase(code, INARI_X86_EBP, 0x08);
+		inari_x86_push_imm(code, (unsigned long) cu);
+		inari_x86_call(code, fixup_vtable);
+		inari_x86_add_imm_reg(code, 0x08, INARI_X86_ESP);
+
+		inari_x86_pop_reg(code, INARI_X86_EAX);
 	}
 
-	__emit_pop_reg(buf, MACH_REG_EBP);
+	inari_x86_pop_reg(code, INARI_X86_EBP);
+
+	x86_code_commit(buf, code);
+
 	emit_indirect_jump_reg(buf, MACH_REG_EAX);
 
 	jit_text_reserve(buffer_offset(buf));
@@ -958,9 +939,13 @@ void emit_trampoline(struct compilation_unit *cu,
 
 void emit_lock(struct buffer *buf, struct vm_object *obj)
 {
-	__emit_push_imm(buf, (unsigned long)obj);
-	__emit_call(buf, vm_object_lock);
-	__emit_add_imm_reg(buf, PTR_SIZE, MACH_REG_xSP);
+	char *code = buffer_current(buf);
+
+	inari_x86_push_imm(code, (unsigned long) obj);
+	inari_x86_call(code, vm_object_lock);
+	inari_x86_add_imm_reg(code, PTR_SIZE, INARI_X86_ESP);
+
+	x86_code_commit(buf, code);
 
 	__emit_push_reg(buf, MACH_REG_EAX);
 	emit_exception_test(buf, MACH_REG_EAX);
@@ -969,13 +954,17 @@ void emit_lock(struct buffer *buf, struct vm_object *obj)
 
 void emit_unlock(struct buffer *buf, struct vm_object *obj)
 {
-	/* Save caller-saved registers which contain method's return value */
-	__emit_push_reg(buf, MACH_REG_EAX);
-	__emit_push_reg(buf, MACH_REG_EDX);
+	char *code = buffer_current(buf);
 
-	__emit_push_imm(buf, (unsigned long)obj);
-	__emit_call(buf, vm_object_unlock);
-	__emit_add_imm_reg(buf, PTR_SIZE, MACH_REG_ESP);
+	/* Save caller-saved registers which contain method's return value */
+	inari_x86_push_reg(code, INARI_X86_EAX);
+	inari_x86_push_reg(code, INARI_X86_EDX);
+
+	inari_x86_push_imm(code, (unsigned long) obj);
+	inari_x86_call(code, vm_object_unlock);
+	inari_x86_add_imm_reg(code, PTR_SIZE, INARI_X86_ESP);
+
+	x86_code_commit(buf, code);
 
 	emit_exception_test(buf, MACH_REG_EAX);
 
@@ -1052,18 +1041,23 @@ extern void jni_trampoline(void);
 void emit_jni_trampoline(struct buffer *buf, struct vm_method *vmm,
 			 void *target)
 {
+	char *code;
+
 	jit_text_lock();
 
 	buf->buf = jit_text_ptr();
 
-	__emit_pop_reg(buf, MACH_REG_xAX);	/* return address */
+	code = buffer_current(buf);
 
-	__emit_push_reg(buf, MACH_REG_xAX);
-	__emit_push_imm(buf, (unsigned long) target);
-	__emit_push_reg(buf, MACH_REG_xAX);
-	__emit_push_imm(buf, (unsigned long) vmm);
-	__emit_push_reg(buf, MACH_REG_xBP);
-	__emit_jmp(buf, (unsigned long) jni_trampoline);
+	inari_x86_pop_reg (code, INARI_X86_EAX);	/* return address */
+	inari_x86_push_reg(code, INARI_X86_EAX);
+	inari_x86_push_imm(code, (unsigned long) target);
+	inari_x86_push_reg(code, INARI_X86_EAX);
+	inari_x86_push_imm(code, (unsigned long) vmm);
+	inari_x86_push_reg(code, INARI_X86_EBP);
+	inari_x86_jmp(code, (unsigned long) jni_trampoline);
+
+	x86_code_commit(buf, code);
 
 	jit_text_reserve(buffer_offset(buf));
 	jit_text_unlock();
@@ -1211,7 +1205,6 @@ static emit_fn_t emitters[] = {
 	DECL_EMITTER(INSN_ADD_REG_REG, insn_encode),
 	DECL_EMITTER(INSN_AND_REG_REG, insn_encode),
 	DECL_EMITTER(INSN_CALL_REG, insn_encode),
-	DECL_EMITTER(INSN_CALL_REL, emit_call),
 	DECL_EMITTER(INSN_CLTD_REG_REG, insn_encode),
 	DECL_EMITTER(INSN_DIVSD_XMM_XMM, insn_encode),
 	DECL_EMITTER(INSN_DIVSS_XMM_XMM, insn_encode),
@@ -1320,7 +1313,6 @@ static emit_fn_t emitters[] = {
 	DECL_EMITTER(INSN_MUL_REG_REG, emit_mul_reg_reg),
 	DECL_EMITTER(INSN_OR_IMM_MEMBASE, emit_or_imm_membase),
 	DECL_EMITTER(INSN_OR_MEMBASE_REG, insn_encode),
-	DECL_EMITTER(INSN_PUSH_IMM, emit_push_imm),
 	DECL_EMITTER(INSN_SBB_IMM_REG, insn_encode),
 	DECL_EMITTER(INSN_SBB_MEMBASE_REG, insn_encode),
 	DECL_EMITTER(INSN_SBB_REG_REG, insn_encode),
@@ -1349,12 +1341,248 @@ static void __emit_insn(struct buffer *buf, struct basic_block *bb, struct insn 
 
 void emit_insn(struct buffer *buf, struct basic_block *bb, struct insn *insn)
 {
+	struct operand *dst, *src;
+	char *code;
+
+	code = buffer_current(buf);
+
+	dst = &insn->dest;
+	src = &insn->src;
+
 	insn->mach_offset = buffer_offset(buf);
 
+	switch (insn->type) {
+	case INSN_ADC_IMM_REG:
+		inari_x86_adc_imm_reg(code, src->imm, encode_reg(&dst->reg));
+		break;
+	case INSN_ADC_MEMBASE_REG:
+		inari_x86_adc_membase_reg(code, encode_reg(&src->base_reg), src->disp, encode_reg(&dst->reg));
+		break;
+	case INSN_ADC_REG_REG:
+		inari_x86_adc_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_ADDSD_XMM_XMM:
+		inari_x86_sse_addsd_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_ADDSS_XMM_XMM:
+		inari_x86_sse_addss_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_ADD_IMM_REG:
+		inari_x86_add_imm_reg(code, src->imm, encode_reg(&dst->reg));
+		break;
+	case INSN_ADD_MEMBASE_REG:
+		inari_x86_add_membase_reg(code, encode_reg(&src->base_reg), src->disp, encode_reg(&dst->reg));
+		break;
+	case INSN_ADD_REG_REG:
+		inari_x86_add_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_AND_MEMBASE_REG:
+		inari_x86_and_membase_reg(code, encode_reg(&src->base_reg), src->disp, encode_reg(&dst->reg));
+		break;
+	case INSN_AND_REG_REG:
+		inari_x86_and_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_CALL_REG:
+		inari_x86_call_regp(code, encode_reg(&dst->reg));
+		break;
+	case INSN_CALL_REL:
+		inari_x86_call(code, src->rel);
+		break;
+	case INSN_CLTD_REG_REG:
+		inari_x86_cdq(code);
+		break;
+	case INSN_CMP_IMM_REG:
+		inari_x86_cmp_imm_reg(code, src->imm, encode_reg(&dst->reg));
+		break;
+	case INSN_CMP_MEMBASE_REG:
+		inari_x86_add_membase_reg(code, encode_reg(&src->base_reg), src->disp, encode_reg(&dst->reg));
+		break;
+	case INSN_CMP_REG_REG:
+		inari_x86_cmp_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_CONV_FPU64_TO_GPR: goto legacy;
+	case INSN_CONV_FPU_TO_GPR: goto legacy;
+	case INSN_CONV_GPR_TO_FPU: goto legacy;
+	case INSN_CONV_GPR_TO_FPU64: goto legacy;
+	case INSN_CONV_XMM64_TO_XMM: goto legacy;
+	case INSN_CONV_XMM_TO_XMM64: goto legacy;
+	case INSN_DIVSD_XMM_XMM:
+		inari_x86_sse_divsd_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_DIVSS_XMM_XMM:
+		inari_x86_sse_divss_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_DIV_MEMBASE_REG: goto legacy;
+	case INSN_DIV_REG_REG: goto legacy;
+	case INSN_FILD_64_MEMBASE: goto legacy;
+	case INSN_FISTP_64_MEMBASE: goto legacy;
+	case INSN_FLDCW_MEMBASE: goto legacy;
+	case INSN_FLD_64_MEMBASE: goto legacy;
+	case INSN_FLD_64_MEMLOCAL: goto legacy;
+	case INSN_FLD_MEMBASE: goto legacy;
+	case INSN_FLD_MEMLOCAL: goto legacy;
+	case INSN_FNSTCW_MEMBASE: goto legacy;
+	case INSN_FSTP_64_MEMBASE: goto legacy;
+	case INSN_FSTP_64_MEMLOCAL: goto legacy;
+	case INSN_FSTP_MEMBASE: goto legacy;
+	case INSN_FSTP_MEMLOCAL: goto legacy;
+	case INSN_IC_CALL: goto legacy;
+	case INSN_JE_BRANCH: goto legacy;
+	case INSN_JGE_BRANCH: goto legacy;
+	case INSN_JG_BRANCH: goto legacy;
+	case INSN_JLE_BRANCH: goto legacy;
+	case INSN_JL_BRANCH: goto legacy;
+	case INSN_JMP_BRANCH: goto legacy;
+	case INSN_JMP_MEMBASE: goto legacy;
+	case INSN_JMP_MEMINDEX: goto legacy;
+	case INSN_JNE_BRANCH: goto legacy;
+	case INSN_MOVSD_MEMBASE_XMM:
+		inari_x86_sse_movsd_membase_reg(code, encode_reg(&src->reg), src->disp, encode_reg(&dst->reg));
+		break;
+	case INSN_MOVSD_MEMDISP_XMM: goto legacy;
+	case INSN_MOVSD_MEMINDEX_XMM: goto legacy;
+	case INSN_MOVSD_MEMLOCAL_XMM:
+		inari_x86_sse_movsd_membase_reg(code, INARI_X86_EBP, slot_offset_64(insn->src.slot), encode_reg(&dst->reg));
+		break;
+	case INSN_MOVSD_XMM_MEMBASE: goto legacy;
+	case INSN_MOVSD_XMM_MEMDISP: goto legacy;
+	case INSN_MOVSD_XMM_MEMINDEX: goto legacy;
+	case INSN_MOVSD_XMM_MEMLOCAL: goto legacy;
+	case INSN_MOVSD_XMM_XMM:
+		inari_x86_sse_movsd_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_MOVSS_MEMBASE_XMM:
+		inari_x86_sse_movss_membase_reg(code, encode_reg(&src->reg), src->disp, encode_reg(&dst->reg));
+		break;
+	case INSN_MOVSS_MEMDISP_XMM: goto legacy;
+	case INSN_MOVSS_MEMINDEX_XMM: goto legacy;
+	case INSN_MOVSS_MEMLOCAL_XMM:
+		inari_x86_sse_movss_membase_reg(code, INARI_X86_EBP, slot_offset(insn->src.slot), encode_reg(&dst->reg));
+		break;
+	case INSN_MOVSS_XMM_MEMBASE: goto legacy;
+	case INSN_MOVSS_XMM_MEMDISP: goto legacy;
+	case INSN_MOVSS_XMM_MEMINDEX: goto legacy;
+	case INSN_MOVSS_XMM_MEMLOCAL: goto legacy;
+	case INSN_MOVSS_XMM_XMM:
+		inari_x86_sse_movss_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_MOVSXD_REG_REG: goto legacy;
+	case INSN_MOVSX_16_MEMBASE_REG: goto legacy;
+	case INSN_MOVSX_16_REG_REG: goto legacy;
+	case INSN_MOVSX_8_MEMBASE_REG: goto legacy;
+	case INSN_MOVSX_8_REG_REG: goto legacy;
+	case INSN_MOVZX_16_REG_REG: goto legacy;
+	case INSN_MOV_IMM_MEMBASE: goto legacy;
+	case INSN_MOV_IMM_MEMLOCAL: goto legacy;
+	case INSN_MOV_IMM_REG: goto legacy;
+	case INSN_MOV_IMM_THREAD_LOCAL_MEMBASE: goto legacy;
+	case INSN_MOV_MEMBASE_REG: goto legacy;
+	case INSN_MOV_MEMDISP_REG: goto legacy;
+	case INSN_MOV_MEMINDEX_REG: goto legacy;
+	case INSN_MOV_MEMLOCAL_REG: goto legacy;
+	case INSN_MOV_REG_MEMBASE: goto legacy;
+	case INSN_MOV_REG_MEMDISP: goto legacy;
+	case INSN_MOV_REG_MEMINDEX: goto legacy;
+	case INSN_MOV_REG_MEMLOCAL: goto legacy;
+	case INSN_MOV_REG_REG:
+		inari_x86_mov_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg), 4);
+		break;
+	case INSN_MOV_REG_THREAD_LOCAL_MEMBASE: goto legacy;
+	case INSN_MOV_REG_THREAD_LOCAL_MEMDISP: goto legacy;
+	case INSN_MOV_THREAD_LOCAL_MEMDISP_REG: goto legacy;
+	case INSN_MULSD_MEMDISP_XMM: goto legacy;
+	case INSN_MULSD_XMM_XMM:
+		inari_x86_sse_mulsd_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_MULSS_XMM_XMM:
+		inari_x86_sse_mulss_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_MUL_MEMBASE_EAX: goto legacy;
+	case INSN_MUL_REG_EAX: goto legacy;
+	case INSN_MUL_REG_REG: goto legacy;
+	case INSN_NEG_REG: goto legacy;
+	case INSN_NOP:
+		inari_x86_nop(code);
+		break;
+	case INSN_OR_IMM_MEMBASE: goto legacy;
+	case INSN_OR_MEMBASE_REG:
+		inari_x86_or_membase_reg(code, encode_reg(&src->base_reg), src->disp, encode_reg(&dst->reg));
+		break;
+	case INSN_OR_REG_REG:
+		inari_x86_or_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_PHI: goto legacy;
+	case INSN_POP_MEMLOCAL: goto legacy;
+	case INSN_POP_REG:
+		inari_x86_pop_reg(code, encode_reg(&src->reg));
+		break;
+	case INSN_PUSH_IMM:
+		inari_x86_push_imm(code, src->imm);
+		break;
+	case INSN_PUSH_MEMLOCAL: goto legacy;
+	case INSN_PUSH_REG:
+		inari_x86_push_reg(code, encode_reg(&src->reg));
+		break;
+	case INSN_RET:
+		inari_x86_ret(code);
+		break;
+	case INSN_SAR_IMM_REG: goto legacy;
+	case INSN_SAR_REG_REG: goto legacy;
+	case INSN_SBB_IMM_REG: goto legacy;
+		inari_x86_sbb_imm_reg(code, src->imm, encode_reg(&dst->reg));
+		break;
+	case INSN_SBB_MEMBASE_REG:
+		inari_x86_sbb_membase_reg(code, encode_reg(&src->base_reg), src->disp, encode_reg(&dst->reg));
+		break;
+	case INSN_SBB_REG_REG: goto legacy;
+	case INSN_SHL_REG_REG: goto legacy;
+	case INSN_SHR_REG_REG: goto legacy;
+	case INSN_SUBSD_XMM_XMM:
+		inari_x86_sse_subsd_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_SUBSS_XMM_XMM:
+		inari_x86_sse_subss_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_SUB_IMM_REG:
+		inari_x86_sub_imm_reg(code, src->imm, encode_reg(&dst->reg));
+		break;
+	case INSN_SUB_MEMBASE_REG: goto legacy;
+	case INSN_SUB_REG_REG:
+		inari_x86_sub_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_TEST_IMM_MEMDISP: goto legacy;
+	case INSN_TEST_MEMBASE_REG:
+		inari_x86_test_membase_reg(code, encode_reg(&src->base_reg), src->disp, encode_reg(&dst->reg));
+		break;
+	case INSN_XORPD_XMM_XMM:
+		inari_x86_sse_xorpd_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_XORPS_XMM_XMM:
+		inari_x86_sse_xorps_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	case INSN_XOR_MEMBASE_REG:
+		inari_x86_xor_membase_reg(code, encode_reg(&src->base_reg), src->disp, encode_reg(&dst->reg));
+		break;
+	case INSN_XOR_REG_REG:
+		inari_x86_xor_reg_reg(code, encode_reg(&src->reg), encode_reg(&dst->reg));
+		break;
+	default:
+		goto legacy;
+		break;
+	}
+
+	x86_code_commit(buf, code);
+
+	return;
+legacy:
 	__emit_insn(buf, bb, insn);
 }
 
 void emit_nop(struct buffer *buf)
 {
-	emit(buf, 0x90);
+	char *code = buffer_current(buf);
+
+	inari_x86_nop(code);
+
+	x86_code_commit(buf, code);
 }

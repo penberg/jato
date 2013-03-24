@@ -19,7 +19,7 @@ ARCH_CONFIG=arch/$(ARCH)/include/arch/config$(ARCH_POSTFIX).h
 # Make the build silent by default
 V =
 
-PROGRAMS = jato
+PROGRAMS = jato jalvikvm
 
 LIB_FILE	:= libjvm.a
 
@@ -46,6 +46,8 @@ LIB_OBJS += cafebabe/method_info.o
 LIB_OBJS += cafebabe/source_file_attribute.o
 LIB_OBJS += cafebabe/stack_map_table_attribute.o
 LIB_OBJS += cafebabe/stream.o
+LIB_OBJS += dalvik/classloader.o
+LIB_OBJS += dalvik/dex-file.o
 LIB_OBJS += jit/abc-removal.o
 LIB_OBJS += jit/args.o
 LIB_OBJS += jit/arithmetic-bc.o

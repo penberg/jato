@@ -308,7 +308,33 @@ static enum interp_status interpret(struct vm_interp_frame *frame)
 	case OPC_PUTFIELD:		assert(!"OPC_PUTFIELD"); break;
 	case OPC_INVOKEVIRTUAL:		assert(!"OPC_INVOKEVIRTUAL"); break;
 	case OPC_INVOKESPECIAL:		assert(!"OPC_INVOKESPECIAL"); break;
-	case OPC_INVOKESTATIC:		assert(!"OPC_INVOKESTATIC"); break;
+	case OPC_INVOKESTATIC: {
+		struct vm_class *vmc = vmm->class;
+		struct vm_interp_frame *new_frame;
+		unsigned long i, nr_args;
+		struct vm_method *target;
+		uint16_t idx;
+
+		idx = read_u16(frame->code, &frame->pc);
+
+		target = vm_class_resolve_method_recursive(vmc, idx, CAFEBABE_CLASS_ACC_STATIC);
+
+		assert(target != NULL);
+
+		new_frame = vm_interp_frame_new(target);
+
+		assert(new_frame != NULL);
+
+		nr_args = vm_method_arg_stack_count(target);
+
+		assert(nr_args == 0);
+
+		vm_interp_frame(new_frame);
+
+		vm_interp_frame_delete(new_frame);
+
+		break;
+	}
 	case OPC_INVOKEINTERFACE:	assert(!"OPC_INVOKEINTERFACE"); break;
 	case OPC_NEW:			assert(!"OPC_NEW"); break;
 	case OPC_NEWARRAY:		assert(!"OPC_NEWARRAY"); break;
@@ -334,6 +360,14 @@ static enum interp_status interpret(struct vm_interp_frame *frame)
 	return INTERP_CONTINUE;
 }
 
+void vm_interp_frame(struct vm_interp_frame *frame)
+{
+	while (frame->pc < frame->code_len) {
+		if (interpret(frame) == INTERP_RETURN)
+			return;
+	}
+}
+
 void vm_interp_method_v(struct vm_method *vmm, va_list args, union jvalue *result)
 {
 	struct vm_interp_frame *frame;
@@ -350,10 +384,7 @@ void vm_interp_method_v(struct vm_method *vmm, va_list args, union jvalue *resul
 		stack_push(frame->ostack, arg);
 	}
 
-	while (frame->pc < frame->code_len) {
-		if (interpret(frame) == INTERP_RETURN)
-			return;
-	}
+	vm_interp_frame(frame);
 
 	vm_interp_frame_delete(frame);
 }

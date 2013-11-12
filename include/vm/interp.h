@@ -5,9 +5,11 @@
 
 #include <stdarg.h>
 
+struct vm_interp_frame;
 struct vm_method;
 struct vm_object;
 
+void vm_interp_frame(struct vm_interp_frame *frame);
 void vm_interp_method_v(struct vm_method *method, va_list args, union jvalue *result);
 
 static inline void vm_interp_method(struct vm_method *method, ...)

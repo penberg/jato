@@ -34,10 +34,10 @@
 #include <stdio.h>
 
 struct vm_interp_frame {
+	unsigned char			*code;
+	unsigned long			code_len;
 	unsigned long			pc;
-
 	struct stack			*ostack;
-
 	struct vm_method		*vmm;
 };
 
@@ -45,6 +45,36 @@ enum interp_status {
 	INTERP_CONTINUE,
 	INTERP_RETURN,
 };
+
+static struct vm_interp_frame *vm_interp_frame_new(struct vm_method *vmm)
+{
+	struct vm_interp_frame *frame;
+
+	frame = malloc(sizeof(*frame));
+	if (!frame)
+		return NULL;
+
+	frame->ostack = alloc_stack();
+	if (!frame->ostack) {
+		free(frame);
+
+		return NULL;
+	}
+	
+	frame->code	= vmm->code_attribute.code;
+	frame->code_len	= vmm->code_attribute.code_length;
+	frame->pc	= 0;
+	frame->vmm	= vmm;
+
+	return frame;
+}
+
+static void vm_interp_frame_delete(struct vm_interp_frame *frame)
+{
+	free_stack(frame->ostack);
+
+	free(frame);
+}
 
 static inline uint8_t read_u8(unsigned char *code, unsigned long *pc)
 {
@@ -65,12 +95,12 @@ static inline uint16_t read_u16(unsigned char *code, unsigned long *pc)
 	return c;
 }
 
-static enum interp_status interpret(struct vm_interp_frame *frame, unsigned char *code, unsigned long *pc)
+static enum interp_status interpret(struct vm_interp_frame *frame)
 {
 	struct vm_method *vmm = frame->vmm;
 	unsigned char opc;
 
-	opc = read_u8(code, pc);
+	opc = read_u8(frame->code, &frame->pc);
 
 	switch (opc) {
 	case OPC_NOP: {
@@ -261,7 +291,7 @@ static enum interp_status interpret(struct vm_interp_frame *frame, unsigned char
 		uint16_t idx;
 		void *value;
 
-		idx = read_u16(code, pc);
+		idx = read_u16(frame->code, &frame->pc);
 
 		vmf = vm_class_resolve_field_recursive(vmc, idx);
 
@@ -306,31 +336,24 @@ static enum interp_status interpret(struct vm_interp_frame *frame, unsigned char
 
 void vm_interp_method_v(struct vm_method *vmm, va_list args, union jvalue *result)
 {
-	struct vm_interp_frame frame;
-	unsigned char *code;
-	
-	code = vmm->code_attribute.code;
+	struct vm_interp_frame *frame;
 
-	frame.pc = 0;
+	frame = vm_interp_frame_new(vmm);
 
-	frame.ostack = alloc_stack();
-
-	assert(frame.ostack != NULL);
-
-	frame.vmm = vmm;
+	assert(frame != NULL);
 
 	assert(!vm_class_is_interface(vmm->class));
 
 	for (int i = 0; i < vmm->args_count; i++) {
 		void *arg = va_arg(args, void *);
 
-		stack_push(frame.ostack, arg);
+		stack_push(frame->ostack, arg);
 	}
 
-	while (frame.pc < vmm->code_attribute.code_length) {
-		if (interpret(&frame, code, &frame.pc) == INTERP_RETURN)
+	while (frame->pc < frame->code_len) {
+		if (interpret(frame) == INTERP_RETURN)
 			return;
 	}
 
-	free_stack(frame.ostack);
+	vm_interp_frame_delete(frame);
 }

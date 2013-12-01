@@ -46,6 +46,11 @@ enum interp_status {
 	INTERP_RETURN,
 };
 
+#define CONST_INTERP(type, value)						\
+	do {									\
+		stack_push(frame->ostack, (void *) (unsigned long) value);	\
+	} while (0)
+
 static struct vm_interp_frame *vm_interp_frame_new(struct vm_method *vmm)
 {
 	struct vm_interp_frame *frame;
@@ -107,13 +112,17 @@ static enum interp_status interpret(struct vm_interp_frame *frame)
 		 break;
 	}
 	case OPC_ACONST_NULL:		assert(!"OPC_ACONST_NULL"); break;
-	case OPC_ICONST_M1:		assert(!"OPC_ICONST_M1"); break;
-	case OPC_ICONST_0:		assert(!"OPC_ICONST_0"); break;
-	case OPC_ICONST_1:		assert(!"OPC_ICONST_1"); break;
-	case OPC_ICONST_2:		assert(!"OPC_ICONST_2"); break;
-	case OPC_ICONST_3:		assert(!"OPC_ICONST_3"); break;
-	case OPC_ICONST_4:		assert(!"OPC_ICONST_4"); break;
-	case OPC_ICONST_5:		assert(!"OPC_ICONST_5"); break;
+	case OPC_ICONST_M1:
+	case OPC_ICONST_0:
+	case OPC_ICONST_1:
+	case OPC_ICONST_2:
+	case OPC_ICONST_3:
+	case OPC_ICONST_4:
+	case OPC_ICONST_5: {
+		jint value = opc - OPC_ICONST_0;
+		CONST_INTERP(jint, value);
+		break;
+	}
 	case OPC_LCONST_0:		assert(!"OPC_LCONST_0"); break;
 	case OPC_LCONST_1:		assert(!"OPC_LCONST_1"); break;
 	case OPC_FCONST_0:		assert(!"OPC_FCONST_0"); break;
